@@ -12,6 +12,11 @@ const globalErrorHandlingMiddleware = (
       message: error.message,
     });
     return;
+  } else if (error.name === "ValidationError") {
+    res.status(400).json({
+      message: error.message,
+    });
+    return;
   } else {
     res.status(500).json({
       message: error.message,

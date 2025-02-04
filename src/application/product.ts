@@ -1,4 +1,8 @@
+import mongoose from "mongoose";
+import { CategoryDTO } from "../domain/dto/category";
+import { ProductDTO } from "../domain/dto/product";
 import NotFoundError from "../domain/errors/not-found-error";
+import ValidationError from "../domain/errors/validation-error";
 import Product from "../infrastructure/schemas/Product";
 import { Request, Response, NextFunction } from "express";
 
@@ -85,7 +89,6 @@ export const getProducts = async (
   try {
     const data = await Product.find();
     res.status(200).json(data);
-    return;
   } catch (error) {
     next(error);
   }
@@ -98,14 +101,19 @@ export const getProductById = async (
 ) => {
   try {
     const selectedId = req.params.id;
+
+    //validate product id
+    if (!mongoose.Types.ObjectId.isValid(selectedId)) {
+      throw new ValidationError("Invalid product ID format");
+    }
+
     const product = await Product.findById(selectedId);
 
     if (!product) {
       throw new NotFoundError("Product not found");
     }
 
-    res.status(200).json(product).send();
-    return;
+    res.status(200).json(product);
   } catch (error) {
     next(error);
   }
@@ -117,9 +125,19 @@ export const createProduct = async (
   next: NextFunction
 ) => {
   try {
-    await Product.create(req.body);
-    res.status(201).send();
-    return;
+    //runtime validation using zod
+    const result = ProductDTO.safeParse(req.body);
+
+    if (!result.success) {
+      console.log(result.error.errors);
+      throw new ValidationError(
+        result.error.errors.map((e) => e.message).join(", ")
+      );
+    }
+    const newProduct = new Product(result.data);
+    await newProduct.save();
+
+    res.status(201).json(newProduct);
   } catch (error) {
     next(error);
   }
@@ -133,18 +151,29 @@ export const updateProduct = async (
   try {
     const selectedId = req.params.id;
 
-    const product = await Product.findByIdAndUpdate(selectedId, req.body);
+    //validate product id
+    if (!mongoose.Types.ObjectId.isValid(selectedId)) {
+      throw new ValidationError("Invalid product ID format");
+    }
+
+    //runtime validation using zod
+    const result = ProductDTO.safeParse(req.body);
+    if (!result.success) {
+      throw new ValidationError(
+        result.error.errors.map((e) => e.message).join(", ")
+      );
+    }
+
+    // Update and return the updated product
+    const product = await Product.findByIdAndUpdate(selectedId, result.data, {
+      new: true,
+    });
 
     if (!product) {
       throw new NotFoundError("Product not found");
     }
-    product.name = req.body.name;
-    product.price = req.body.price;
-    product.description = req.body.description;
-    product.image = req.body.image;
 
     res.status(200).send();
-    return;
   } catch (error) {
     next(error);
   }
@@ -157,13 +186,18 @@ export const deleteProduct = async (
 ) => {
   try {
     const selectedId = req.params.id;
+
+    //validate product id
+    if (!mongoose.Types.ObjectId.isValid(selectedId)) {
+      throw new ValidationError("Invalid product ID format");
+    }
+
     const product = await Product.findByIdAndDelete(selectedId);
 
     if (!product) {
       throw new NotFoundError("Product not found");
     }
     res.status(204).send();
-    return;
   } catch (error) {
     next(error);
   }
